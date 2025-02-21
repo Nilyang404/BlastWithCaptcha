@@ -96,7 +96,7 @@ In addition, **no** need to consider the cookie correspondence between `blast.tx
 
 3. config
 
-配置文件`config.yml`
+`config.yml`
 
 ```yaml
 system:
