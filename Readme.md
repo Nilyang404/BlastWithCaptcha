@@ -1,7 +1,5 @@
 # BlastWithCaptcha
 
-[![OSCS Status](https://www.oscs1024.com/platform/badge/AbelChe/BlastWithCaptcha.svg?size=large)](https://www.oscs1024.com/project/AbelChe/BlastWithCaptcha?ref=badge_large)
-
 Blasting requests with captcha authentication
 
 A fork of [BlastWithCaptcha](https://github.com/AbelChe/BlastWithCaptcha). Fixed some issues to make it work, and  updated and optimized with multithreading and distributed support, for specific projects, you still need to modify the configuration file to make it work.
